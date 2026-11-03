@@ -1,7 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:todo_app/providers/app_auth_provider.dart';
 import 'package:todo_app/ui/common/custom_text_form_field.dart';
 import 'package:todo_app/ui/home/home_screen.dart';
 import 'package:todo_app/ui/register/register_screen.dart';
+import 'package:todo_app/ui/utils/dialog_utils.dart';
 import 'package:todo_app/ui/utils/validation_utils.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,20 +20,80 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
-  final TextEditingController _userNameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
   @override
   void dispose() {
-    _userNameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  void _login() {
-    if (_formKey.currentState?.validate() == true) {
-      // Form is valid - navigate to HomeScreen
+  Future<void> _login() async {
+    // تحقق من الـ Form أولاً
+    if (_formKey.currentState?.validate() != true) return;
+
+    // اجيب الـ provider بدون listen لأن في دالة وليس في الـ build
+    final authProvider =
+        Provider.of<AppAuthProvider>(context, listen: false);
+
+    // اعرض Loading Dialog أثناء انتظار Firebase
+    DialogUtils.showLoadingDialog(context);
+
+    try {
+      // الكلام مع Firebase عبر الـ Provider مش مباشرةً
+      UserCredential credential =
+          await authProvider.signInWithEmailAndPassword(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+
+      // أخبر الـ Provider بالـ User المسجّل دخوله
+      if (credential.user != null) {
+        authProvider.login(credential.user!);
+      }
+
+      if (!mounted) return;
+      // أخفِ الـ Loading
+      DialogUtils.hideDialog(context);
+
+      // انتقل للـ HomeScreen بدون إمكانية الرجوع (pushReplacement)
       Navigator.pushReplacementNamed(context, HomeScreen.routeName);
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      // أخفِ الـ Loading أولاً
+      DialogUtils.hideDialog(context);
+
+      // اعرض رسالة الخطأ المناسبة
+      DialogUtils.showMessage(
+        context,
+        message: _getLoginErrorMessage(e.code),
+        posBottomTitle: 'OK',
+        posBottomAction: () =>
+            Navigator.of(context, rootNavigator: true).pop(),
+      );
+    }
+  }
+
+  // ترجمة أكواد أخطاء Login لرسائل مفهومة
+  // الأخطاء مختلفة عن أخطاء Register
+  String _getLoginErrorMessage(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No account found with this email address.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'invalid-email':
+        return 'Invalid email address format.';
+      case 'user-disabled':
+        return 'This account has been disabled. Contact support.';
+      case 'invalid-credential':
+        return 'Invalid email or password. Please check and try again.';
+      case 'too-many-requests':
+        return 'Too many failed attempts. Please try again later.';
+      default:
+        return 'Login failed. Please try again.\n(Error: $code)';
     }
   }
 
@@ -80,19 +144,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 8),
                 const Text(
                   'Please sign in with your mail',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(color: Colors.white70, fontSize: 16),
                 ),
                 const SizedBox(height: 30),
 
-                // User Name / Email Field
+                // Email Field
                 CustomTextFormField(
-                  label: 'User Name',
-                  hintText: 'enter your name',
-                  controller: _userNameController,
-                  validator: AppValidator.validateUserName,
+                  label: 'E-mail address',
+                  hintText: 'enter your email',
+                  controller: _emailController,
+                  validator: AppValidator.validateEmail,
+                  keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 20),
 
@@ -111,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () {
-                      // Forgot password placeholder
+                      // Forgot password — placeholder
                     },
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.white,
@@ -143,10 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: const Text(
                     'Login',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(height: 25),
@@ -156,14 +215,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Text(
-                      "Don’t have an account? ",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                      ),
+                      "Don't have an account? ",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                     InkWell(
                       onTap: () {
+                        // pushNamed علشان يقدر يرجع من Register للـ Login
                         Navigator.pushNamed(context, RegisterScreen.routeName);
                       },
                       child: const Text(
@@ -173,6 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           decoration: TextDecoration.underline,
+                          decorationColor: Colors.white,
                         ),
                       ),
                     ),

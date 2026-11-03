@@ -1,16 +1,36 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:todo_app/firebase_options.dart';
+import 'package:todo_app/providers/app_auth_provider.dart';
 import 'package:todo_app/ui/home/home_screen.dart';
 import 'package:todo_app/ui/login/login_screen.dart';
 import 'package:todo_app/ui/register/register_screen.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Auto Login: نشوف لو في يوزر مسجّل دخول مسبقاً من جلسة قديمة
+  // Firebase بيحتفظ بالـ session تلقائياً، لو في يوزر مش هيبقى null
+  User? currentUser = FirebaseAuth.instance.currentUser;
+
+  runApp(
+    ChangeNotifierProvider(
+      // نعمل الـ provider وعلى طول نحط اليوزر الحالي (لو موجود)
+      create: (_) => AppAuthProvider()..firebaseUser = currentUser,
+      child: MyApp(isLoggedIn: currentUser != null),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  // بنمرر هل في يوزر موجود مسبقاً أو لأ
+  final bool isLoggedIn;
 
-  // This widget is the root of your application.
+  const MyApp({super.key, required this.isLoggedIn});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -22,9 +42,11 @@ class MyApp extends StatelessWidget {
           selectedItemColor: Colors.blue,
           unselectedItemColor: Colors.grey,
         ),
-
         scaffoldBackgroundColor: const Color(0xFFDFECDB),
-        appBarTheme: const AppBarTheme(backgroundColor: Colors.blue, elevation: 0),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.blue,
+          elevation: 0,
+        ),
         floatingActionButtonTheme: const FloatingActionButtonThemeData(
           backgroundColor: Colors.lightBlue,
         ),
@@ -36,7 +58,9 @@ class MyApp extends StatelessWidget {
         RegisterScreen.routeName: (_) => const RegisterScreen(),
         HomeScreen.routeName: (_) => const HomeScreen(),
       },
-      initialRoute: LoginScreen.routeName,
+      // Auto Login: لو اليوزر موجود → HomeScreen مباشرة
+      // لو مش موجود → LoginScreen
+      initialRoute: isLoggedIn ? HomeScreen.routeName : LoginScreen.routeName,
     );
   }
 }
